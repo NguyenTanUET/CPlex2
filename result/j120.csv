@@ -1,0 +1,25 @@
+file name,Model constraint,Status,Solve time (second)
+j12010_1.data,111,optimal,0.07
+j12010_10.data,66,optimal,0.04
+j12010_2.data,91,optimal,0.04
+j12010_3.data,99,optimal,0.05
+j12010_4.data,95,optimal,0.05
+j12010_5.data,97,optimal,0.05
+j12010_6.data,92,optimal,0.05
+j12010_7.data,79,optimal,0.09
+j12010_8.data,114,optimal,0.05
+j12010_9.data,77,optimal,0.04
+j12011_1.data,N/A,unknown,2.55
+j12011_10.data,N/A,unknown,24.11
+j12011_2.data,N/A,unknown,87.73
+j12011_3.data,N/A,unknown,4.58
+j12011_4.data,N/A,unknown,1.51
+j12011_5.data,N/A,unknown,0.90
+j12011_6.data,N/A,unknown,92.48
+j12011_7.data,N/A,unknown,2.75
+j12011_8.data,N/A,unknown,4.92
+j12011_9.data,N/A,unknown,1.93
+j12012_1.data,N/A,unknown,68.38
+j12012_10.data,N/A,unknown,900.09
+j12012_2.data,N/A,unknown,7.41
+j12012_3.data,N/A,unknown,1.67

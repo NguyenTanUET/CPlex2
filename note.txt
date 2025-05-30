@@ -1,0 +1,9 @@
+- định dạng file .data:
+ + dòng đầu: task, renewable, bound
+ + dòng thứ hai: capacity của các resource (R1, R2,...)
+ + dòng thứ 3 trở xuống biểu diễn các task: [duration] [demand1] [demand2] [demand3] [demand4] [num_successors] [successor1] [successor2] ... [successorN]
+
+- rcpsp_j30.py đang chạy file .data với FailLimit = 200.000 và Time = 900s
+  (FailLimit là số lần thử tối đa mà solver thử sai khi process gặp phải deadend.
+  Khi solver đạt tới FailLimit, chương trình sẽ dừng và trả về solution tốt nhất (nếu có))
+- rcpsp_j30_wo_FL.py đang chạy không có FailLimit
