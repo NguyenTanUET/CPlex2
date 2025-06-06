@@ -4,12 +4,12 @@ RCPSP solver that processes all .data files and outputs results to CSV.
 Each instance gets a fixed 20 seconds of solve time.
 
 Usage:
-    python rcpsp_j120_only_time_per_instance.py
+    python rcpsp_j60_only_time_per_instance.py
 
 This script:
 1. Finds all .data files in the Convert/data directory
 2. Solves each RCPSP instance using the CP Optimizer with a 20-second limit per instance
-3. Records results in result/j120.csv with columns:
+3. Records results in result/j60.csv with columns:
    - file name (just the filename, not the path)
    - Model constraint (makespan found)
    - Status (optimal/feasible/unknown)
@@ -122,9 +122,9 @@ def solve_rcpsp(data_file):
 
 def main():
     # Define directories
-    data_dir = Path("Convert/data/j120")
+    data_dir = Path("Convert/data/j60")
     result_dir = Path("result")
-    output_file = result_dir / "j120.csv"
+    output_file = result_dir / "j60.csv"
 
     # Create result directory if it doesn't exist
     os.makedirs(result_dir, exist_ok=True)

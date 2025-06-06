@@ -1,4 +1,4 @@
-file name,makespan,LB,UB,Status,Solve time (second)
-Pack001.data,23,9,23,optimal,0.08
-Pack002.data,32,14,32,optimal,0.10
-Pack003.data,29,10,29,optimal,0.12
+file name,makespan,Status,Solve time (second)
+Pack001.data,23,optimal,0.09
+Pack002.data,32,optimal,0.12
+Pack003.data,29,optimal,0.12

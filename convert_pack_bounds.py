@@ -35,27 +35,46 @@ def read_bounds_from_csv(csv_path):
             return bounds_dict
 
         # Tìm các cột chứa thông tin LB và UB từ header
-        header = rows[header_row]
+        header_line = rows[header_row][0]  # Lấy phần tử đầu tiên của dòng header
 
-        # Các cột cần thiết
+        # Phân tách header thành các cột riêng biệt
+        header_columns = header_line.split(',')
+
+        print(f"Header được phân tách thành {len(header_columns)} cột:")
+        for i, col in enumerate(header_columns[:5]):  # Chỉ in 5 cột đầu
+            print(f"  Cột {i}: '{col.strip()}'")
+
+        # Tìm vị trí của các cột cần thiết
         name_col = 0  # Cột đầu tiên là tên file
         lb_col = 1  # Cột thứ 2 là lower bound
         ub_col = 2  # Cột thứ 3 là upper bound
 
+        # Kiểm tra xem có đủ cột không
+        if len(header_columns) < 3:
+            print(f"Header không đủ cột (chỉ có {len(header_columns)} cột)")
+            return bounds_dict
+
         # In thông tin các cột
-        print(f"Dùng cột {name_col} ('{header[name_col] if name_col < len(header) else '?'}') làm tên file")
-        print(f"Dùng cột {lb_col} ('{header[lb_col] if lb_col < len(header) else '?'}') làm Lower Bound")
-        print(f"Dùng cột {ub_col} ('{header[ub_col] if ub_col < len(header) else '?'}') làm Upper Bound")
+        print(f"Dùng cột {name_col} ('{header_columns[name_col].strip()}') làm tên file")
+        print(f"Dùng cột {lb_col} ('{header_columns[lb_col].strip()}') làm Lower Bound")
+        print(f"Dùng cột {ub_col} ('{header_columns[ub_col].strip()}') làm Upper Bound")
 
         # Xử lý từng dòng dữ liệu
         processed_count = 0
-        for row in rows[data_start_row:]:
-            if len(row) <= max(name_col, lb_col, ub_col):
+        for row_index, row in enumerate(rows[data_start_row:], start=data_start_row):
+            if not row or not row[0]:  # Bỏ qua dòng trống
+                continue
+
+            # Phân tách dòng dữ liệu thành các cột
+            data_columns = row[0].split(',')
+
+            if len(data_columns) <= max(name_col, lb_col, ub_col):
+                print(f"Dòng {row_index + 1} không đủ cột: {data_columns}")
                 continue
 
             # Lấy tên file từ đường dẫn đầy đủ
-            full_path = row[name_col].strip()
-            if not full_path or 'Pack' not in full_path:
+            full_path = data_columns[name_col].strip()
+            if not full_path or 'Pack_d' not in full_path:
                 continue
 
             # Trích xuất tên file từ đường dẫn đầy đủ
@@ -73,13 +92,13 @@ def read_bounds_from_csv(csv_path):
                 pack_num = str(int(pack_num))
 
                 # Tạo key cho dictionary
-                key = f"Pack{pack_num}"
+                key = f"Pack_d{pack_num}"
 
                 # Lấy giá trị lower bound và upper bound
                 try:
                     # Đảm bảo bounds > 0, sử dụng None nếu giá trị <= 0 hoặc không hợp lệ
-                    lb_str = row[lb_col].strip()
-                    ub_str = row[ub_col].strip()
+                    lb_str = data_columns[lb_col].strip()
+                    ub_str = data_columns[ub_col].strip()
 
                     # Chuyển đổi định dạng số từ dấu phẩy sang dấu chấm nếu cần
                     lb_str = lb_str.replace(',', '.')
@@ -96,12 +115,14 @@ def read_bounds_from_csv(csv_path):
                     bounds_dict[key] = (lb, ub)
                     processed_count += 1
 
+                    print(f"Đọc được: {key} -> LB={lb}, UB={ub}")
+
                     # Thêm các biến thể khác của key để tăng khả năng match
                     if len(pack_num) == 1:
-                        bounds_dict[f"Pack00{pack_num}"] = (lb, ub)
-                        bounds_dict[f"Pack0{pack_num}"] = (lb, ub)
+                        bounds_dict[f"Pack_d00{pack_num}"] = (lb, ub)
+                        bounds_dict[f"Pack_d0{pack_num}"] = (lb, ub)
                     elif len(pack_num) == 2:
-                        bounds_dict[f"Pack0{pack_num}"] = (lb, ub)
+                        bounds_dict[f"Pack_d0{pack_num}"] = (lb, ub)
                 except (ValueError, IndexError) as e:
                     print(f"Không thể đọc bounds cho {filename}: {e}")
 
@@ -192,10 +213,10 @@ def convert_excel_to_csv(excel_path, csv_path):
 
 def main():
     # Kiểm tra thư mục và file
-    EXCEL_PATH = Path("Convert/bounds/pack_FORWARD_STAIRCASE_2025-05-17-01-22-52.xlsx")
-    RCP_DIR = Path("Convert/raw_data/pack")
-    OUTPUT_DIR = Path("Convert/data/pack")
-    CSV_PATH = Path("Convert/bounds/pack_FORWARD_STAIRCASE_2025-05-17-01-22-52.csv")
+    EXCEL_PATH = Path("Convert/bounds/pack_d_FORWARD_STAIRCASE_2025-05-17-07-50-05.xlsx")
+    RCP_DIR = Path("Convert/raw_data/pack_d")
+    OUTPUT_DIR = Path("Convert/data/pack_d")
+    CSV_PATH = Path("Convert/bounds/pack_d_FORWARD_STAIRCASE_2025-05-17-07-50-05.csv")
 
     if CSV_PATH.exists():
         print(f"Tìm thấy file CSV: {CSV_PATH}")
@@ -238,7 +259,7 @@ def main():
             # Tìm bounds cho file này
             lb, ub = None, None  # Giá trị mặc định là None, không phải 0
             for key in [base_name,
-                        base_name.replace('Pack0', 'Pack').replace('Pack00', 'Pack'),
+                        base_name.replace('Pack_d0', 'Pack_d').replace('Pack_d00', 'Pack_d'),
                         # Xử lý trường hợp Pack032b -> Pack32 (bỏ 'b')
                         base_name.replace('b', '')]:
                 if key in bounds_dict:
