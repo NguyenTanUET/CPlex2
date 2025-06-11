@@ -122,9 +122,9 @@ def solve_rcpsp(data_file, time_remaining):
 
 def main():
     # Define directories
-    data_dir = Path("Convert/data/j120")
+    data_dir = Path("Convert/data/j60")
     result_dir = Path("result")
-    output_file = result_dir / "j120.csv"
+    output_file = result_dir / "j60.csv"
 
     # Set total time limit for all instances (in seconds)
     TOTAL_TIME_LIMIT = 900  # 15 minutes

@@ -1,34 +1,170 @@
-32 4 43
-12 13 4 12
-0 0 0 0 0 3 2 3 4
-8 4 0 0 0 3 6 11 15
-4 10 0 0 0 3 7 8 13
-6 0 0 0 3 3 5 9 10
-3 3 0 0 0 1 20
-8 0 0 0 8 1 30
-5 4 0 0 0 1 27
-9 0 1 0 0 3 12 19 27
-2 6 0 0 0 1 14
-7 0 0 0 1 2 16 25
-9 0 5 0 0 2 20 26
-2 0 7 0 0 1 14
-6 4 0 0 0 2 17 18
-3 0 8 0 0 1 17
-9 3 0 0 0 1 25
-10 0 0 0 5 2 21 22
-6 0 0 0 8 1 22
-5 0 0 0 7 2 20 22
-3 0 1 0 0 2 24 29
-7 0 10 0 0 2 23 25
-2 0 0 0 6 1 28
-7 2 0 0 0 1 23
-2 3 0 0 0 1 24
-3 0 9 0 0 1 30
-3 4 0 0 0 1 30
-7 0 0 4 0 1 31
-8 0 0 0 7 1 28
-3 0 8 0 0 1 31
-7 0 7 0 0 1 32
-2 0 7 0 0 1 32
-2 0 0 2 0 1 32
-0 0 0 0 0 0
+import time
+import numpy as np
+from numba import cuda
+
+class RCPSPSolver:
+    def __init__(self, population_size=64, mutation_rate=0.01, crossover_rate=0.7, use_gpu=True):
+        """Initialize solver parameters"""
+        self.population_size = population_size
+        self.mutation_rate = mutation_rate
+        self.crossover_rate = crossover_rate
+        self.use_gpu = use_gpu  # Enable/disable GPU usage
+
+        if self.use_gpu:
+            # Define CUDA kernels (example - replace with actual kernel code)
+            @cuda.jit
+            def evaluate_population_kernel(population, fitness, durations, demands, capacities, precedence, pop_size, nb_tasks, nb_resources):
+                idx = cuda.grid(1)
+                if idx < pop_size:
+                    # Simplified example - replace with actual evaluation logic
+                    fitness[idx] = 0.0
+                    for i in range(nb_tasks):
+                        fitness[idx] += population[idx, i]
+
+            @cuda.jit
+            def genetic_operations_kernel(population, new_population, fitness, pop_size, nb_tasks, generation):
+                idx = cuda.grid(1)
+                if idx < pop_size:
+                    # Simplified example - replace with actual genetic operation logic
+                    new_population[idx] = population[idx]  # Copy for now
+
+            self.evaluate_population_kernel = evaluate_population_kernel
+            self.genetic_operations_kernel = genetic_operations_kernel
+        else:
+            self.evaluate_population_kernel = None  # or CPU version if implemented
+            self.genetic_operations_kernel = None
+
+    def _evaluate_individual_cpu(self, individual, durations, demands, capacities, precedence_matrix):
+        """Evaluate individual on CPU (simplified example)"""
+        makespan = 0
+        # Replace with actual evaluation logic
+        return makespan + np.sum(individual)
+
+    def _cpu_genetic_operations(self, population, new_population, fitness):
+        """Genetic operations on CPU (simplified example)"""
+        # Replace with actual crossover, mutation, selection logic
+        new_population[:] = population[:]  # Copy for now
+
+    def solve(self, instance_data, time_limit=900.0):
+        """Solve RCPSP instance"""
+        start_time = time.time()
+
+        try:
+            nb_tasks = instance_data['nb_tasks']
+            nb_resources = instance_data['nb_resources']
+            capacities = instance_data['capacities']
+            durations = instance_data['durations']
+            demands = instance_data['demands']
+            precedence_matrix = instance_data['precedence_matrix']
+            optimal_bound = instance_data['optimal_bound']
+
+            # Debug print optimal bound
+            print(f"Optimal bound for this instance: {optimal_bound}")
+
+            # Initialize population (priority-based encoding)
+            population = np.random.rand(self.population_size, nb_tasks).astype(np.float32)
+            fitness = np.zeros(self.population_size, dtype=np.float32)
+            new_population = np.zeros_like(population)
+
+            if self.use_gpu:
+                # Transfer data to GPU
+                d_population = cuda.to_device(population)
+                d_new_population = cuda.to_device(new_population)
+                d_fitness = cuda.to_device(fitness)
+                d_durations = cuda.to_device(durations)
+                d_demands = cuda.to_device(demands)
+                d_capacities = cuda.to_device(capacities)
+                d_precedence = cuda.to_device(precedence_matrix)
+
+                # Optimized CUDA execution configuration
+                threads_per_block = 128
+                blocks_per_grid = (self.population_size + threads_per_block - 1) // threads_per_block
+                
+                print(f"CUDA Configuration: {blocks_per_grid} blocks x {threads_per_block} threads = {blocks_per_grid * threads_per_block} total threads")
+                
+                if blocks_per_grid < 64:
+                    print(f"Warning: Only {blocks_per_grid} blocks. Consider increasing population size for better GPU utilization.")
+
+            best_fitness = float('inf')
+            generation = 0
+
+            # Run until time limit is reached
+            while True:
+                # Check time limit
+                if time.time() - start_time > time_limit:
+                    print(f"Time limit reached at generation {generation}")
+                    break
+
+                if self.use_gpu:
+                    # GPU evaluation
+                    evaluate_population_kernel[blocks_per_grid, threads_per_block](
+                        d_population, d_fitness, d_durations, d_demands, d_capacities,
+                        d_precedence, self.population_size, nb_tasks, nb_resources
+                    )
+
+                    # Copy fitness back to check for improvements
+                    fitness = d_fitness.copy_to_host()
+                else:
+                    # CPU fallback (simplified)
+                    for i in range(self.population_size):
+                        fitness[i] = self._evaluate_individual_cpu(
+                            population[i], durations, demands, capacities, precedence_matrix
+                        )
+
+                # Check for improvement
+                current_best = np.min(fitness)
+                if current_best < best_fitness:
+                    best_fitness = current_best
+                    print(f"New best fitness at generation {generation}: {best_fitness:.2f}")
+
+                # Check if optimal solution found (early termination for optimal)
+                if optimal_bound is not None and best_fitness <= optimal_bound + 1e-6:
+                    print(f"Optimal solution found at generation {generation}! Best: {best_fitness}, Optimal: {optimal_bound}")
+                    break
+
+                # Early termination if no feasible solution after many generations
+                if generation > 1000 and best_fitness > 100000:
+                    print(f"No feasible solution found after {generation} generations. Stopping early.")
+                    break
+
+                if self.use_gpu:
+                    # GPU genetic operations
+                    genetic_operations_kernel[blocks_per_grid, threads_per_block](
+                        d_population, d_new_population, d_fitness,
+                        self.population_size, nb_tasks, generation
+                    )
+
+                    # Swap populations
+                    d_population, d_new_population = d_new_population, d_population
+                else:
+                    # CPU genetic operations (simplified)
+                    self._cpu_genetic_operations(population, new_population, fitness)
+                    population, new_population = new_population, population
+
+                if generation % 100 == 0:  # Report every 100 generations
+                    elapsed = time.time() - start_time
+                    print(f"Gen {generation}: Best = {best_fitness:.2f}, Current = {current_best:.2f}, Time = {elapsed:.2f}s")
+
+                generation += 1
+
+            solve_time = time.time() - start_time
+
+            # Determine status based on solution quality and optimality
+            if optimal_bound is not None and best_fitness <= optimal_bound + 1e-6:
+                status = "optimal"
+                print(f"Status: OPTIMAL (found {best_fitness:.2f}, optimal is {optimal_bound})")
+            elif best_fitness < 1e6:  # Feasible solution found (no large penalty)
+                status = "feasible"
+                print(f"Status: FEASIBLE (makespan = {best_fitness:.2f})")
+            else:
+                status = "unknown"  # No feasible solution found
+                print(f"Status: UNKNOWN (no feasible solution, best penalty = {best_fitness:.2f})")
+
+            return best_fitness if best_fitness < 1e6 else None, status, solve_time
+
+        except Exception as e:
+            solve_time = time.time() - start_time
+            print(f"Error in solver: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None, "error", solve_time

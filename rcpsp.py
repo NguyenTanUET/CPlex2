@@ -37,7 +37,7 @@ import os
 # - the demand on each resource (one integer per resource)
 # - the number of successors followed by the list of successor numbers
 
-filename = os.path.dirname(os.path.abspath(__file__)) + '\Convert\data\j30\j301_5.data'
+filename = os.path.dirname(os.path.abspath(__file__)) + '\Convert\data\j60\j6040_9.data'
 with open(filename, 'r') as file:
     first_line = file.readline().split()
     NB_TASKS, NB_RESOURCES = int(first_line[0]), int(first_line[1])

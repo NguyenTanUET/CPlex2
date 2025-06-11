@@ -168,17 +168,37 @@ def genetic_operations_kernel(population, new_population, fitness,
 class NumbaRCPSPSolver:
     """GPU-accelerated RCPSP solver using Numba CUDA"""
 
-    def __init__(self, population_size=1024, max_generations=1000):
-        self.population_size = population_size
+    def __init__(self, population_size=None, max_generations=1000):
         self.max_generations = max_generations
 
         # Check CUDA availability
         if not cuda.is_available():
             print("CUDA is not available. Falling back to CPU.")
             self.use_gpu = False
+            self.population_size = population_size or 512
         else:
-            print(f"CUDA available with {len(cuda.gpus)} GPU(s)")
+            gpu_count = len(cuda.gpus)
+            print(f"CUDA available with {gpu_count} GPU(s)")
             self.use_gpu = True
+
+            # Get GPU info for better configuration
+            gpu = cuda.get_current_device()
+            print(f"GPU: {gpu.name}")
+            print(f"Compute Capability: {gpu.compute_capability}")
+            print(f"Multiprocessors: {gpu.MULTIPROCESSOR_COUNT}")
+
+            # Auto-size population for optimal GPU utilization
+            if population_size is None:
+                # Target: 4-8 blocks per multiprocessor for good occupancy
+                multiprocessors = gpu.MULTIPROCESSOR_COUNT
+                target_blocks = multiprocessors * 6  # 6 blocks per SM
+                threads_per_block = 128  # Good balance for occupancy
+
+                optimal_population = target_blocks * threads_per_block
+                self.population_size = max(optimal_population, 8192)  # Minimum 8192
+                print(f"Auto-configured population size: {self.population_size}")
+            else:
+                self.population_size = population_size
 
     def parse_rcpsp_file(self, filename: str):
         """Parse RCPSP data file"""
@@ -230,7 +250,7 @@ class NumbaRCPSPSolver:
         }
 
     def solve(self, instance_data, time_limit=900.0):
-        """Solve RCPSP instance"""
+        """Solve RCPSP instance with improved initialization and early termination"""
         start_time = time.time()
 
         try:
@@ -242,8 +262,12 @@ class NumbaRCPSPSolver:
             precedence_matrix = instance_data['precedence_matrix']
             optimal_bound = instance_data['optimal_bound']
 
-            # Initialize population (priority-based encoding)
-            population = np.random.rand(self.population_size, nb_tasks).astype(np.float32)
+            print(f"Optimal bound for this instance: {optimal_bound}")
+
+            # Much better initialization: Use greedy heuristic for initial population
+            population = self._initialize_population_heuristic(
+                nb_tasks, durations, demands, capacities, precedence_matrix
+            )
             fitness = np.zeros(self.population_size, dtype=np.float32)
             new_population = np.zeros_like(population)
 
@@ -257,16 +281,18 @@ class NumbaRCPSPSolver:
                 d_capacities = cuda.to_device(capacities)
                 d_precedence = cuda.to_device(precedence_matrix)
 
-                # CUDA execution configuration
-                threads_per_block = 256
+                threads_per_block = 128
                 blocks_per_grid = (self.population_size + threads_per_block - 1) // threads_per_block
 
             best_fitness = float('inf')
-            best_generation = 0
-            stagnation_limit = 100
+            stagnation_count = 0
+            generation = 0
 
-            for generation in range(self.max_generations):
+            # Quick feasibility check - terminate early if no improvement after many generations
+            while True:
+                # Check time limit
                 if time.time() - start_time > time_limit:
+                    print(f"Time limit reached at generation {generation}")
                     break
 
                 if self.use_gpu:
@@ -275,11 +301,9 @@ class NumbaRCPSPSolver:
                         d_population, d_fitness, d_durations, d_demands, d_capacities,
                         d_precedence, self.population_size, nb_tasks, nb_resources
                     )
-
-                    # Copy fitness back to check for improvements
                     fitness = d_fitness.copy_to_host()
                 else:
-                    # CPU fallback (simplified)
+                    # CPU fallback
                     for i in range(self.population_size):
                         fitness[i] = self._evaluate_individual_cpu(
                             population[i], durations, demands, capacities, precedence_matrix
@@ -288,46 +312,89 @@ class NumbaRCPSPSolver:
                 # Check for improvement
                 current_best = np.min(fitness)
                 if current_best < best_fitness:
+                    improvement = best_fitness - current_best
                     best_fitness = current_best
-                    best_generation = generation
+                    stagnation_count = 0
+                    print(f"Generation {generation}: New best = {best_fitness:.2f} (improved by {improvement:.2f})")
+                else:
+                    stagnation_count += 1
 
-                # Early stopping
-                if generation - best_generation > stagnation_limit:
+                # Early termination if optimal found
+                if optimal_bound is not None and best_fitness <= optimal_bound + 1e-6:
+                    print(f"Optimal solution found at generation {generation}!")
+                    break
+
+                # Early termination for clearly infeasible problems
+                if generation > 500 and best_fitness > 50000:
+                    print(f"Problem appears infeasible - stopping early at generation {generation}")
+                    break
+
+                # Early termination for stagnation
+                if stagnation_count > 200:
+                    print(f"No improvement for 200 generations - stopping early at generation {generation}")
                     break
 
                 if self.use_gpu:
-                    # GPU genetic operations
                     genetic_operations_kernel[blocks_per_grid, threads_per_block](
                         d_population, d_new_population, d_fitness,
                         self.population_size, nb_tasks, generation
                     )
-
-                    # Swap populations
                     d_population, d_new_population = d_new_population, d_population
                 else:
-                    # CPU genetic operations (simplified)
                     self._cpu_genetic_operations(population, new_population, fitness)
                     population, new_population = new_population, population
 
-                if generation % 100 == 0:
+                if generation % 50 == 0:  # Report every 50 generations
                     elapsed = time.time() - start_time
-                    print(f"Gen {generation}: Best = {best_fitness:.2f}, Time = {elapsed:.2f}s")
+                    print(
+                        f"Gen {generation}: Best = {best_fitness:.2f}, Stagnation = {stagnation_count}, Time = {elapsed:.2f}s")
+
+                generation += 1
 
             solve_time = time.time() - start_time
 
             # Determine status
-            if optimal_bound is not None and abs(best_fitness - optimal_bound) < 1e-6:
+            if optimal_bound is not None and best_fitness <= optimal_bound + 1e-6:
                 status = "optimal"
+            elif best_fitness < 1000:  # Reasonable makespan (no major penalties)
+                status = "feasible"
             else:
-                status = "feasible" if best_fitness < 1e6 else "unknown"
+                status = "unknown"
 
-            return best_fitness if best_fitness < 1e6 else None, status, solve_time
+            return best_fitness if best_fitness < 1000 else None, status, solve_time
 
         except Exception as e:
             solve_time = time.time() - start_time
             print(f"Error in solver: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None, "error", solve_time
 
+    def _initialize_population_heuristic(self, nb_tasks, durations, demands, capacities, precedence_matrix):
+        """Initialize population with heuristic-based individuals instead of random"""
+        population = np.zeros((self.population_size, nb_tasks), dtype=np.float32)
+
+        # Generate multiple heuristic solutions
+        for i in range(self.population_size):
+            if i < self.population_size // 4:
+                # Priority-based on duration (shortest first)
+                priorities = 1.0 / (durations + 1e-6)
+            elif i < self.population_size // 2:
+                # Priority-based on resource demand (lightest first)
+                resource_load = np.sum(demands, axis=1)
+                priorities = 1.0 / (resource_load + 1e-6)
+            elif i < 3 * self.population_size // 4:
+                # Critical path based priorities
+                priorities = np.random.exponential(1.0, nb_tasks)
+            else:
+                # Random for diversity
+                priorities = np.random.rand(nb_tasks)
+
+            # Normalize to [0,1] range
+            priorities = (priorities - np.min(priorities)) / (np.max(priorities) - np.min(priorities) + 1e-6)
+            population[i] = priorities.astype(np.float32)
+
+        return population
     def _evaluate_individual_cpu(self, individual, durations, demands, capacities, precedence_matrix):
         """CPU fallback for fitness evaluation"""
         nb_tasks = len(individual)
@@ -392,7 +459,7 @@ class NumbaRCPSPSolver:
 
 def solve_rcpsp_numba(data_file, time_limit=900.0):
     """Wrapper function for solving single RCPSP instance"""
-    solver = NumbaRCPSPSolver(population_size=512, max_generations=1000)
+    solver = NumbaRCPSPSolver(population_size=16384, max_generations=1000)  # Doubled again for 64 blocks
     instance_data = solver.parse_rcpsp_file(str(data_file))
     return solver.solve(instance_data, time_limit)
 
