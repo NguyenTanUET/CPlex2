@@ -5,6 +5,9 @@ RCPSP solver using linear search from upper bound down to lower bound.
 This approach tries each makespan value sequentially to find the optimal solution.
 No time limit per makespan test - only overall 900s limit.
 """
+
+"TODO: Tìm cách add trực tiếp bounds thành các constraint, ví dụ: Max(e1, e2,..., et) = 60"
+
 from docplex.cp.model import *
 import os
 import csv
@@ -92,9 +95,6 @@ def solve_rcpsp_linear_search(data_file):
                 LOWER_BOUND = int(first_line[2])
                 UPPER_BOUND = int(first_line[3])
                 print(f"Bounds from file: LB={LOWER_BOUND}, UB={UPPER_BOUND}")
-            elif len(first_line) == 3:
-                LOWER_BOUND = UPPER_BOUND = int(first_line[2])
-                print(f"Single bound from file: {LOWER_BOUND}")
             else:
                 print("No bounds specified in file")
                 return (None, None, None, "infeasible", time.time() - start_time)
